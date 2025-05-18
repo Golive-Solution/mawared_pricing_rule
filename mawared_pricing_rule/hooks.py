@@ -28,6 +28,9 @@ app_license = "MIT"
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+    "Sales Invoice": "public/js/sales_invoice.js",
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -123,7 +126,12 @@ app_license = "MIT"
 # 		"on_trash": "method"
 # 	}
 # }
-
+doc_events = {
+    "Sales Invoice": {
+		"validate": "mawared_pricing_rule.event.sales_invoice.validate",
+		"before_insert": "mawared_pricing_rule.event.sales_invoice.before_insert",
+	},
+}
 # Scheduled Tasks
 # ---------------
 
@@ -213,3 +221,19 @@ app_license = "MIT"
 # auth_hooks = [
 # 	"mawared_pricing_rule.auth.validate"
 # ]
+fixtures = [
+    {
+        'dt': 'Custom Field',
+        'filters': {
+            'name': 
+				['in', 
+					[
+                        "Sales Invoice-custom_ignore_pricing_rule",
+                        "Sales Invoice Item-custom_rate",
+                        "Sales Invoice Item-custom_man_change",
+                        
+					]
+				]
+        }
+    }
+]
