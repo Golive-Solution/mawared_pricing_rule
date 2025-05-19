@@ -96,7 +96,7 @@ def apply_free_item_based_on_same_item_qty(doc):
             price_rule_doc = frappe.get_doc("Pricing Rule", price_rule[0].name)
             if price_rule_doc.price_or_product_discount == "Product":  # Change threshold as needed
                 free_item = {
-                    "item_code": price_rule_doc.free_item,
+                    "item_code": price_rule_doc.free_item if not price_rule_doc.same_item else value["item_code"],
                     "qty": price_rule_doc.free_qty,
                     "rate": 0,
                     "is_free_item": 1,
