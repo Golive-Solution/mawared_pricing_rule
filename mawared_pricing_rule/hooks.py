@@ -231,6 +231,7 @@ fixtures = [
                         "Sales Invoice-custom_ignore_pricing_rule",
                         "Sales Invoice Item-custom_rate",
                         "Sales Invoice Item-custom_man_change",
+                        "Sales Invoice Item-custom_applied_pricing_rule",
                         
 					]
 				]
