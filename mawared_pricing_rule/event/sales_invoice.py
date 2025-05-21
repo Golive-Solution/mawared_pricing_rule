@@ -55,39 +55,23 @@ def apply_free_item_based_on_same_item_qty(doc):
     non_free_items = [item for item in doc.items if not item.is_free_item]
     doc.items = []
     for item in non_free_items:
-        
+        new_item = doc.append("items", {})
         dect = frappe._dict(
             price_list=doc.selling_price_list,
             uom=item.uom,
             transaction_date=doc.posting_date,
             customer=doc.customer,
         )
-        doc.append("items", {
-            "item_code": item.item_code,
-            "qty": item.qty,
-            "rate": item.rate,
-            "amount": item.qty * item.rate,
-            "pricing_rules": "",
-            "conversion_factor": item.conversion_factor,
-            "uom": item.uom,
-            "income_account": item.income_account,
-            "cost_center": item.cost_center,
-            "expense_account": item.expense_account,
-            "base_price_list_rate": item.base_price_list_rate,
-            "base_rate": item.base_rate,
-            "base_amount": item.base_amount,
-            "item_name": item.item_name,
-            "price_list_rate": item.price_list_rate,
-            "base_amount": item.base_amount,
-            "discount_amount": 0,
-            "discount_percentage":0,
-            "is_free_item": 0,  # Set to 0 for non-free items
-            "description": item.description,
-            "custom_rate": item.custom_rate,
-            "custom_man_change":item.custom_man_change,
-            "applied_pricing_rule": "",
-            "batch_no": item.batch_no,
-        })
+        # Copy all fields from item to the new_item
+        for fieldname, value in item.as_dict().items():
+            setattr(new_item, fieldname, value)
+
+        # Force set known values (if needed)
+        new_item.is_free_item = 0
+        new_item.pricing_rules = ""
+        new_item.applied_pricing_rule = ""
+        new_item.discount_percentage = 0
+        new_item.discount_amount = 0
     # Step 2: Add free items where needed
     for key , value in item_qty_map.items():
         price_list = get_item_price(dect, item.item_code, ignore_party=True)
