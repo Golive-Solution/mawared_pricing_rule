@@ -4,6 +4,8 @@ from collections import defaultdict
 from frappe.query_builder.functions import IfNull
 from mawared_pricing_rule.event.erp_utils import get_pricing_rules
 from mawared_pricing_rule.event.utils import build_json_args
+from erpnext.stock.doctype.batch.batch import get_batch_no
+
 
 def before_insert(doc, method=None):
     doc.ignore_pricing_rule = 1
@@ -79,8 +81,10 @@ def apply_free_item_based_on_same_item_qty(doc):
         if price_rule:
             price_rule_doc = frappe.get_doc("Pricing Rule", price_rule[0].name)
             if price_rule_doc.price_or_product_discount == "Product":  # Change threshold as needed
+                free_item_code = price_rule_doc.free_item if not price_rule_doc.same_item else value["item_code"]
+                batch_no = get_batch_no(item_code = free_item_code, qty = price_rule_doc.free_qty, warehouse = doc.set_warehouse)
                 free_item = {
-                    "item_code": price_rule_doc.free_item if not price_rule_doc.same_item else value["item_code"],
+                    "item_code": free_item_code, 
                     "qty": price_rule_doc.free_qty,
                     "rate": 0,
                     "is_free_item": 1,
@@ -98,6 +102,8 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "base_price_list_rate": 0,
                     "base_rate": 0,
                     "base_amount": 0,
+                    "batch_no": batch_no,
+                    "warehouse": doc.set_warehouse,
                 }
                 
                 doc.append("items", free_item)
