@@ -104,6 +104,8 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "base_amount": 0,
                     "batch_no": batch_no,
                     "warehouse": doc.set_warehouse,
+                    "custom_is_prepayment":0,
+                    "custom_is_down_payment":0
                 }
                 
                 doc.append("items", free_item)
