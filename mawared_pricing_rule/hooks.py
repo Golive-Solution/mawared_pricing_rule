@@ -30,6 +30,7 @@ app_license = "MIT"
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 doctype_js = {
     "Sales Invoice": "public/js/sales_invoice.js",
+    "Sales Order": "public/js/sales_order.js",
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -130,6 +131,10 @@ doc_events = {
     "Sales Invoice": {
 		"validate": "mawared_pricing_rule.event.sales_invoice.validate",
 		"before_insert": "mawared_pricing_rule.event.sales_invoice.before_insert",
+	},
+    "Sales Order": {
+		"validate": "mawared_pricing_rule.event.sales_order.validate",
+		"before_insert": "mawared_pricing_rule.event.sales_order.before_insert",
 	},
 }
 # Scheduled Tasks
@@ -232,7 +237,10 @@ fixtures = [
                         "Sales Invoice Item-custom_rate",
                         "Sales Invoice Item-custom_man_change",
                         "Sales Invoice Item-custom_applied_pricing_rule",
-                        
+                        "Sales Order-custom_ignore_pricing_rule",
+                        "Sales Order Item-custom_rate",
+                        "Sales Order Item-custom_man_change",
+                        "Sales Order Item-custom_applied_pricing_rule",  
 					]
 				]
         }
