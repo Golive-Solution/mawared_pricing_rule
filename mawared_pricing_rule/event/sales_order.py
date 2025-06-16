@@ -82,13 +82,17 @@ def apply_free_item_based_on_same_item_qty(doc):
             price_rule_doc = frappe.get_doc("Pricing Rule", price_rule[0].name)
             if price_rule_doc.price_or_product_discount == "Product":  # Change threshold as needed
                 free_item_code = price_rule_doc.free_item if not price_rule_doc.same_item else value["item_code"]
-                batch_no = get_batch_no(item_code = free_item_code, qty = price_rule_doc.free_qty, warehouse = doc.set_warehouse)
                 free_item = {
                     "item_code": free_item_code, 
                     "qty": price_rule_doc.free_qty,
                     "rate": 0,
                     "is_free_item": 1,
                     "price_list_rate":0,
+                    "item_group": frappe.get_value("Item", free_item_code, "item_group"),
+                    "brand": frappe.get_value("Item", free_item_code, "brand"),
+                    "image": frappe.get_value("Item", free_item_code, "image"),
+                    "stock_uom": frappe.get_value("Item", free_item_code, "stock_uom"),
+                    "stock_qty":price_rule_doc.free_qty,
                     "amount": 0,
                     "discount_amount": 0,
                     "discount_percentage":100,
@@ -102,10 +106,7 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "base_price_list_rate": 0,
                     "base_rate": 0,
                     "base_amount": 0,
-                    "batch_no": batch_no,
                     "warehouse": doc.set_warehouse,
-                    "custom_is_prepayment":0,
-                    "custom_is_down_payment":0
                 }
                 
                 doc.append("items", free_item)
