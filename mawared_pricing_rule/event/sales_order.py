@@ -46,7 +46,6 @@ def apply_free_item_based_on_same_item_qty(doc):
                 "qty": item.qty,
                 "conversion_factor": item.conversion_factor,
                 "uom": item.uom,
-                "income_account": item.income_account,
                 "cost_center": item.cost_center,
                 "expense_account": item.expense_account,
                 "item_name": item.item_name,
