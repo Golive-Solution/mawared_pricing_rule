@@ -61,7 +61,7 @@ def apply_free_item_based_on_same_item_qty(doc):
         dect = frappe._dict(
             price_list=doc.selling_price_list,
             uom=item.uom,
-            transaction_date=doc.posting_date,
+            transaction_date=doc.transaction_date,
             customer=doc.customer,
         )
         # Copy all fields from item to the new_item
