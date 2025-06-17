@@ -46,8 +46,6 @@ def apply_free_item_based_on_same_item_qty(doc):
                 "qty": item.qty,
                 "conversion_factor": item.conversion_factor,
                 "uom": item.uom,
-                "cost_center": item.cost_center,
-                "expense_account": item.expense_account,
                 "item_name": item.item_name,
                 "is_free_item": 0,  # Set to 0 for non-free items
                 "description": item.description,
@@ -96,7 +94,6 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "discount_amount": 0,
                     "discount_percentage":100,
                     "description": "Free item applied due to bulk purchase",
-                    "cost_center": value["cost_center"],
                     "conversion_factor": value["conversion_factor"],
                     "uom": value["uom"],
                     "item_name": value["item_name"],
