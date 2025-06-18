@@ -9,6 +9,11 @@ def build_json_args(doc, item=None):
     Returns:
         dict: JSON-serializable arguments dictionary for pricing rule calculation
     """
+    doctype = doc.get("parenttype") or doc.doctype
+
+    date_field = (
+        "transaction_date" if frappe.get_meta(doctype).has_field("transaction_date") else "posting_date"
+    )
     args = {
         'customer': str(doc.customer or ''),
         'customer_group': str(doc.customer_group or ''),
@@ -19,7 +24,7 @@ def build_json_args(doc, item=None):
         'price_list_currency': str(doc.currency or ''),
         'plc_conversion_rate': float(doc.plc_conversion_rate or 1.0),
         'company': str(doc.company or ''),
-        'transaction_date': str(doc.posting_date or ''),
+        'transaction_date': str((doc.posting_date if date_field == "posting_date" else doc.transaction_date) or ''),
         'ignore_pricing_rule': 0,
         'doctype': 'Sales Invoice Item',
         'name': str(doc.name or ''),
