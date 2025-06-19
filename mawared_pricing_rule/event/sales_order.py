@@ -101,6 +101,7 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "base_rate": 0,
                     "base_amount": 0,
                     "warehouse": doc.set_warehouse,
+                    "delivery_date": doc.delivery_date,
                 }
                 
                 doc.append("items", free_item)
