@@ -13,8 +13,10 @@ def before_insert(doc, method=None):
         item.custom_rate = item.rate
 def validate(doc , method = None):
     if not doc.custom_ignore_pricing_rule:
-        apply_free_item_based_on_same_item_qty(doc)
-        calculate_total(doc)
+        # Skip if any item is linked to a Sales Order
+        if not any(getattr(item, "sales_order", None) for item in doc.items):
+            apply_free_item_based_on_same_item_qty(doc)
+            calculate_total(doc)
         
 
 def calculate_total(doc):
