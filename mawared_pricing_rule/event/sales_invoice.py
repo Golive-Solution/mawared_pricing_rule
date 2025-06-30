@@ -14,7 +14,7 @@ def before_insert(doc, method=None):
 def validate(doc , method = None):
     if not doc.custom_ignore_pricing_rule:
         # Skip if any item is linked to a Sales Order
-        if not any(getattr(item, "sales_order", None) for item in doc.items):
+        if not any(getattr(item, "sales_order", None) for item in doc.items) and not getattr(doc, "custom_sales_order", None):
             apply_free_item_based_on_same_item_qty(doc)
             calculate_total(doc)
         
