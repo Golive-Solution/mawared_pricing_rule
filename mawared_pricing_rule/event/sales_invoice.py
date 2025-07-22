@@ -63,12 +63,6 @@ def apply_free_item_based_on_same_item_qty(doc):
     doc.items = []
     for item in non_free_items:
         new_item = doc.append("items", {})
-        dect = frappe._dict(
-            price_list=doc.selling_price_list,
-            uom=item.uom,
-            transaction_date=doc.posting_date,
-            customer=doc.customer,
-        )
         # Copy all fields from item to the new_item
         for fieldname, value in item.as_dict().items():
             setattr(new_item, fieldname, value)
@@ -81,7 +75,13 @@ def apply_free_item_based_on_same_item_qty(doc):
         new_item.discount_amount = 0
     # Step 2: Add free items where needed
     for key , value in item_qty_map.items():
-        price_list = get_item_price(dect, item.item_code, ignore_party=True)
+        dect = frappe._dict(
+            price_list=doc.selling_price_list,
+            uom=value["uom"],
+            transaction_date=doc.posting_date,
+            customer=doc.customer,
+        )
+        price_list = get_item_price(dect, value["item_code"], ignore_party=True)
         price_rule = get_pricing_rules(build_json_args(doc, value),doc)
         if price_rule:
             price_rule_doc = frappe.get_doc("Pricing Rule", price_rule[0].name)
@@ -210,41 +210,40 @@ def apply_free_item_based_on_same_item_qty(doc):
 
 
 def get_item_price(args, item_code, ignore_party=False):
-	"""
-	Get name, price_list_rate from Item Price based on conditions
-	        Check if the desired qty is within the increment of the packing list.
-	:param args: dict (or frappe._dict) with mandatory fields price_list, uom
-	        optional fields transaction_date, customer, supplier
-	:param item_code: str, Item Doctype field item_code
-	"""
+    """
+    Get name, price_list_rate from Item Price based on conditions
+            Check if the desired qty is within the increment of the packing list.
+    :param args: dict (or frappe._dict) with mandatory fields price_list, uom
+            optional fields transaction_date, customer, supplier
+    :param item_code: str, Item Doctype field item_code
+    """
+    ip = frappe.qb.DocType("Item Price")
+    query = (
+        frappe.qb.from_(ip)
+        .select(ip.name, ip.price_list_rate, ip.uom)
+        .where(
+            (ip.item_code == item_code)
+            & (ip.price_list == args.get("price_list"))
+            & (IfNull(ip.uom, "").isin(["", args.get("uom")]))
+            & (IfNull(ip.batch_no, "").isin(["", args.get("batch_no")]))
+        )
+        .orderby(ip.valid_from, order=frappe.qb.desc)
+        .orderby(IfNull(ip.batch_no, ""), order=frappe.qb.desc)
+        .orderby(ip.uom, order=frappe.qb.desc)
+    )
 
-	ip = frappe.qb.DocType("Item Price")
-	query = (
-		frappe.qb.from_(ip)
-		.select(ip.name, ip.price_list_rate, ip.uom)
-		.where(
-			(ip.item_code == item_code)
-			& (ip.price_list == args.get("price_list"))
-			& (IfNull(ip.uom, "").isin(["", args.get("uom")]))
-			& (IfNull(ip.batch_no, "").isin(["", args.get("batch_no")]))
-		)
-		.orderby(ip.valid_from, order=frappe.qb.desc)
-		.orderby(IfNull(ip.batch_no, ""), order=frappe.qb.desc)
-		.orderby(ip.uom, order=frappe.qb.desc)
-	)
+    if not ignore_party:
+        if args.get("customer"):
+            query = query.where(ip.customer == args.get("customer"))
+        elif args.get("supplier"):
+            query = query.where(ip.supplier == args.get("supplier"))
+        else:
+            query = query.where((IfNull(ip.customer, "") == "") & (IfNull(ip.supplier, "") == ""))
 
-	if not ignore_party:
-		if args.get("customer"):
-			query = query.where(ip.customer == args.get("customer"))
-		elif args.get("supplier"):
-			query = query.where(ip.supplier == args.get("supplier"))
-		else:
-			query = query.where((IfNull(ip.customer, "") == "") & (IfNull(ip.supplier, "") == ""))
+    if args.get("transaction_date"):
+        query = query.where(
+            (IfNull(ip.valid_from, "2000-01-01") <= args["transaction_date"])
+            & (IfNull(ip.valid_upto, "2500-12-31") >= args["transaction_date"])
+        )
 
-	if args.get("transaction_date"):
-		query = query.where(
-			(IfNull(ip.valid_from, "2000-01-01") <= args["transaction_date"])
-			& (IfNull(ip.valid_upto, "2500-12-31") >= args["transaction_date"])
-		)
-
-	return query.run()
+    return query.run()
