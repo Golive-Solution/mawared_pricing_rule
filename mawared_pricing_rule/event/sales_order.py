@@ -55,12 +55,7 @@ def apply_free_item_based_on_same_item_qty(doc):
     doc.items = []
     for item in non_free_items:
         new_item = doc.append("items", {})
-        dect = frappe._dict(
-            price_list=doc.selling_price_list,
-            uom=item.uom,
-            transaction_date=doc.transaction_date,
-            customer=doc.customer,
-        )
+        
         # Copy all fields from item to the new_item
         for fieldname, value in item.as_dict().items():
             setattr(new_item, fieldname, value)
@@ -73,7 +68,13 @@ def apply_free_item_based_on_same_item_qty(doc):
         new_item.discount_amount = 0
     # Step 2: Add free items where needed
     for key , value in item_qty_map.items():
-        price_list = get_item_price(dect, item.item_code, ignore_party=True)
+        dect = frappe._dict(
+            price_list=doc.selling_price_list,
+            uom=value["uom"],
+            transaction_date=doc.transaction_date,
+            customer=doc.customer,
+        )
+        price_list = get_item_price(dect, value["item_code"], ignore_party=True)
         price_rule = get_pricing_rules(build_json_args(doc, value),doc)
         if price_rule:
             price_rule_doc = frappe.get_doc("Pricing Rule", price_rule[0].name)
