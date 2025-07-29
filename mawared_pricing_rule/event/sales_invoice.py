@@ -180,7 +180,7 @@ def apply_free_item_based_on_same_item_qty(doc):
         else:
             # If the item is not free, set the rate and amount
             for item in doc.items:
-                if item.is_free_item == 0:
+                if item.is_free_item == 0 and item.item_code == value["item_code"]:
                     item.custom_rate =item.custom_rate if item.custom_rate else price_list[0][1]  
                     item.rate = item.custom_rate
                     item.amount = flt(item.qty) * flt(item.rate)
