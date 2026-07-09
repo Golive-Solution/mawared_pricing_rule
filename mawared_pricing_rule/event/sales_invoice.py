@@ -9,6 +9,11 @@ from erpnext.stock.doctype.batch.batch import get_batch_no
 
 def before_insert(doc, method=None):
     doc.ignore_pricing_rule = 1
+
+def before_validate(doc, method=None):
+    # Seed custom_rate on both create and update. before_insert only fires on
+    # create, so without this the update path enters validate with an empty
+    # custom_rate and the pricing logic falls back to price_list[0] (IndexError).
     for item in doc.items:
         item.custom_rate = item.rate
 def validate(doc , method = None):

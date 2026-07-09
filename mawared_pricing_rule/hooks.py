@@ -130,6 +130,7 @@ doctype_js = {
 doc_events = {
     "Sales Invoice": {
 		"validate": "mawared_pricing_rule.event.sales_invoice.validate",
+		"before_validate": "mawared_pricing_rule.event.sales_invoice.before_validate",
 		"before_insert": "mawared_pricing_rule.event.sales_invoice.before_insert",
 	},
     "Sales Order": {
