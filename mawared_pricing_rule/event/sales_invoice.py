@@ -60,9 +60,6 @@ def apply_free_item_based_on_same_item_qty(doc):
                 "is_free_item": 0,  # Set to 0 for non-free items
                 "description": item.description,
                 "custom_applied_pricing_rule": item.custom_applied_pricing_rule,
-                "custom_vat_rate": item.custom_vat_rate,
-                "custom_tax_category_code": item.custom_tax_category_code,
-                "custom_support_ksa_e_invoice_integration_phase_ii": item.custom_support_ksa_e_invoice_integration_phase_ii,
             }
     non_free_items = [item for item in doc.items if not item.is_free_item]
     doc.items = []
@@ -119,11 +116,6 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "base_amount": 0,
                     "batch_no": batch_no,
                     "warehouse": doc.set_warehouse,
-                    "custom_is_prepayment":0,
-                    "custom_is_down_payment":0,
-                    "custom_vat_rate": value["custom_vat_rate"],
-                    "custom_tax_category_code": value["custom_tax_category_code"],
-                    "custom_support_ksa_e_invoice_integration_phase_ii": value["custom_support_ksa_e_invoice_integration_phase_ii"],
                 }
                 
                 doc.append("items", free_item)
