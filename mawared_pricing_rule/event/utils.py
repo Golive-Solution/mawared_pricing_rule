@@ -1,4 +1,5 @@
 import frappe
+from erpnext.stock.get_item_details import get_item_tax_template, get_item_tax_map
 
 def build_json_args(doc, item=None):
     """
@@ -105,3 +106,23 @@ def build_json_args(doc, item=None):
         })
 
     return frappe._dict(args)
+
+
+def set_free_item_tax_template(doc, free_item):
+    """Set item_tax_template and item_tax_rate on a hand-built free item row,
+    resolved from the Item then its Item Group tree like get_item_details does."""
+    out = {}
+    get_item_tax_template(
+        {
+            "company": doc.company,
+            "tax_category": doc.get("tax_category"),
+            "posting_date": doc.get("posting_date"),
+            "transaction_date": doc.get("transaction_date"),
+            "net_rate": 0,
+        },
+        frappe.get_cached_doc("Item", free_item["item_code"]),
+        out,
+    )
+    if out.get("item_tax_template"):
+        free_item["item_tax_template"] = out["item_tax_template"]
+        free_item["item_tax_rate"] = get_item_tax_map(doc.company, out["item_tax_template"])

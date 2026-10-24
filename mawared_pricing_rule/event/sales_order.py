@@ -3,7 +3,7 @@ from frappe.utils import today , flt
 from collections import defaultdict
 from frappe.query_builder.functions import IfNull
 from mawared_pricing_rule.event.erp_utils import get_pricing_rules
-from mawared_pricing_rule.event.utils import build_json_args
+from mawared_pricing_rule.event.utils import build_json_args, set_free_item_tax_template
 from erpnext.stock.doctype.batch.batch import get_batch_no
 
 
@@ -105,6 +105,7 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "delivery_date": doc.delivery_date,
                 }
                 
+                set_free_item_tax_template(doc, free_item)
                 doc.append("items", free_item)
                 # update the price in the bass item
                 for item in doc.items:
