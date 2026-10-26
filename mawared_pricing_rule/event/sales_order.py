@@ -3,7 +3,7 @@ from frappe.utils import today , flt
 from collections import defaultdict
 from frappe.query_builder.functions import IfNull
 from mawared_pricing_rule.event.erp_utils import get_pricing_rules
-from mawared_pricing_rule.event.utils import build_json_args, set_free_item_tax_template
+from mawared_pricing_rule.event.utils import build_json_args, set_free_item_tax_template, get_free_qty
 from erpnext.stock.doctype.batch.batch import get_batch_no
 
 
@@ -50,6 +50,7 @@ def apply_free_item_based_on_same_item_qty(doc):
                 "is_free_item": 0,  # Set to 0 for non-free items
                 "description": item.description,
                 "custom_applied_pricing_rule": item.custom_applied_pricing_rule,
+                "warehouse": item.warehouse or doc.set_warehouse,
             }
     non_free_items = [item for item in doc.items if not item.is_free_item]
     doc.items = []
@@ -80,9 +81,10 @@ def apply_free_item_based_on_same_item_qty(doc):
             price_rule_doc = frappe.get_doc("Pricing Rule", price_rule[0].name)
             if price_rule_doc.price_or_product_discount == "Product":  # Change threshold as needed
                 free_item_code = price_rule_doc.free_item if not price_rule_doc.same_item else value["item_code"]
+                free_qty = get_free_qty(price_rule_doc, value["qty"])
                 free_item = {
                     "item_code": free_item_code, 
-                    "qty": price_rule_doc.free_qty,
+                    "qty": free_qty,
                     "rate": 0,
                     "is_free_item": 1,
                     "price_list_rate":0,
@@ -90,7 +92,7 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "brand": frappe.get_value("Item", free_item_code, "brand"),
                     "image": frappe.get_value("Item", free_item_code, "image"),
                     "stock_uom": frappe.get_value("Item", free_item_code, "stock_uom"),
-                    "stock_qty":price_rule_doc.free_qty,
+                    "stock_qty":free_qty,
                     "amount": 0,
                     "discount_amount": 0,
                     "discount_percentage":100,

@@ -1,4 +1,5 @@
 import frappe
+from frappe.utils import flt
 from erpnext.stock.get_item_details import get_item_tax_template, get_item_tax_map
 
 def build_json_args(doc, item=None):
@@ -126,3 +127,17 @@ def set_free_item_tax_template(doc, free_item):
     if out.get("item_tax_template"):
         free_item["item_tax_template"] = out["item_tax_template"]
         free_item["item_tax_rate"] = get_item_tax_map(doc.company, out["item_tax_template"])
+
+
+def get_free_qty(pricing_rule, transaction_qty):
+    # .get(): apply_recursion_over / round_free_qty only exist from ERPNext v14.5.0
+    free_qty = flt(pricing_rule.get("free_qty")) or 1
+    recurse_for = flt(pricing_rule.get("recurse_for"))
+    qty = free_qty
+    if pricing_rule.get("is_recursive") and recurse_for:
+        recursive_qty = flt(transaction_qty) - flt(pricing_rule.get("apply_recursion_over"))
+        if recursive_qty > 0:
+            qty = recursive_qty * free_qty / recurse_for
+            if pricing_rule.get("round_free_qty"):
+                qty = (recursive_qty // recurse_for) * free_qty
+    return qty
