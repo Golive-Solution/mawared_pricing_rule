@@ -143,9 +143,15 @@ def get_free_qty(pricing_rule, transaction_qty):
     return qty
 
 
-def get_batch_no(item_code, warehouse, qty, company=None, posting_date=None, posting_time=None):
+def get_batch_no(
+    item_code, warehouse, qty, company=None, posting_date=None, posting_time=None, exclude_qty_map=None
+):
     """
     Return a batch for `item_code` in `warehouse` that has at least `qty` available.
+
+    `qty` must be in stock UOM. `exclude_qty_map` ({batch_no: stock_qty}) is qty already
+    taken from a batch by other rows of the same unsaved document; it is subtracted
+    from that batch's availability.
 
     ERPNext v15 changed `erpnext.stock.doctype.batch.batch.get_batch_no` to take a
     Serial and Batch Bundle id, so the old (item_code, warehouse, qty) call no longer
@@ -177,8 +183,20 @@ def get_batch_no(item_code, warehouse, qty, company=None, posting_date=None, pos
     )
 
     qty = flt(qty)
+    exclude_qty_map = exclude_qty_map or {}
     for batch in batches:
-        if flt(batch.get("qty")) >= qty:
+        available = flt(batch.get("qty")) - flt(exclude_qty_map.get(batch.get("batch_no")))
+        if available >= qty:
             return batch.get("batch_no")
 
     return None
+
+
+def get_available_stock(item_code, warehouse, posting_date=None, posting_time=None):
+    """Actual stock (stock UOM) of `item_code` in `warehouse` as of the posting date/time."""
+    if not item_code or not warehouse:
+        return 0.0
+
+    from erpnext.stock.utils import get_stock_balance
+
+    return flt(get_stock_balance(item_code, warehouse, posting_date, posting_time))

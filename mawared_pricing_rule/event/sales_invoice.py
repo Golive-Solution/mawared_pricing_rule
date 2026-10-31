@@ -1,9 +1,16 @@
 import frappe
+from frappe import _
 from frappe.utils import today , flt
 from collections import defaultdict
 from frappe.query_builder.functions import IfNull
 from mawared_pricing_rule.event.erp_utils import get_pricing_rules
-from mawared_pricing_rule.event.utils import build_json_args, set_free_item_tax_template, get_free_qty, get_batch_no
+from mawared_pricing_rule.event.utils import (
+    build_json_args,
+    set_free_item_tax_template,
+    get_free_qty,
+    get_batch_no,
+    get_available_stock,
+)
 
 
 def before_insert(doc, method=None):
@@ -60,6 +67,9 @@ def apply_free_item_based_on_same_item_qty(doc):
                 "description": item.description,
                 "custom_applied_pricing_rule": item.custom_applied_pricing_rule,
                 "warehouse": item.warehouse or doc.set_warehouse,
+                # "custom_vat_rate": item.custom_vat_rate,
+                # "custom_tax_category_code": item.custom_tax_category_code,
+                # "custom_support_ksa_e_invoice_integration_phase_ii": item.custom_support_ksa_e_invoice_integration_phase_ii,
             }
     non_free_items = [item for item in doc.items if not item.is_free_item]
     doc.items = []
@@ -90,14 +100,26 @@ def apply_free_item_based_on_same_item_qty(doc):
             if price_rule_doc.price_or_product_discount == "Product":  # Change threshold as needed
                 free_item_code = price_rule_doc.free_item if not price_rule_doc.same_item else value["item_code"]
                 free_qty = get_free_qty(price_rule_doc, value["qty"])
-                batch_no = get_batch_no(
-                    item_code=free_item_code,
-                    warehouse=doc.set_warehouse,
-                    qty=free_qty,
-                    company=doc.company,
-                    posting_date=doc.posting_date,
-                    posting_time=doc.posting_time,
-                )
+                free_warehouse = value["warehouse"] or doc.set_warehouse
+
+                # A different free item can't reuse the paid item's UOM / name
+                if free_item_code == value["item_code"]:
+                    free_uom = value["uom"]
+                    free_conversion_factor = flt(value["conversion_factor"]) or 1
+                    free_item_name = value["item_name"]
+                else:
+                    free_uom = frappe.get_value("Item", free_item_code, "stock_uom")
+                    free_conversion_factor = 1
+                    free_item_name = frappe.get_value("Item", free_item_code, "item_name")
+                free_stock_qty = flt(free_qty) * free_conversion_factor
+
+                batch_no = None
+                skip_free = False
+                if doc.update_stock:
+                    batch_no, skip_free = check_free_item_stock(
+                        doc, free_item_code, free_warehouse, free_stock_qty
+                    )
+
                 free_item = {
                     "item_code": free_item_code, 
                     "qty": free_qty,
@@ -108,7 +130,7 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "brand": frappe.get_value("Item", free_item_code, "brand"),
                     "image": frappe.get_value("Item", free_item_code, "image"),
                     "stock_uom": frappe.get_value("Item", free_item_code, "stock_uom"),
-                    "stock_qty":free_qty,
+                    "stock_qty": free_stock_qty,
                     "amount": 0,
                     "discount_amount": 0,
                     "discount_percentage":100,
@@ -116,23 +138,30 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "income_account": value["income_account"],
                     "cost_center": value["cost_center"],
                     "expense_account": value["expense_account"],
-                    "conversion_factor": value["conversion_factor"],
-                    "uom": value["uom"],
-                    "item_name": value["item_name"],
+                    "conversion_factor": free_conversion_factor,
+                    "uom": free_uom,
+                    "item_name": free_item_name,
                     "base_price_list_rate": 0,
                     "base_rate": 0,
                     "base_amount": 0,
                     "batch_no": batch_no,
                     "use_serial_batch_fields": 1 if batch_no else 0,
-                    "warehouse": doc.set_warehouse,
+                    "warehouse": free_warehouse,
+                    # "custom_is_prepayment":0,
+                    # "custom_is_down_payment":0,
+                    # "custom_vat_rate": value["custom_vat_rate"],
+                    # "custom_tax_category_code": value["custom_tax_category_code"],
+                    # "custom_support_ksa_e_invoice_integration_phase_ii": value["custom_support_ksa_e_invoice_integration_phase_ii"],
                 }
                 
-                set_free_item_tax_template(doc, free_item)
-                doc.append("items", free_item)
+                if not skip_free:
+                    set_free_item_tax_template(doc, free_item)
+                    doc.append("items", free_item)
                 # update the price in the bass item
                 for item in doc.items:
-                    if item.item_code == value["item_code"]:
-                        item.custom_applied_pricing_rule = price_rule_doc.name
+                    if item.item_code == value["item_code"] and not item.is_free_item:
+                        # don't record the rule if its free item could not be given
+                        item.custom_applied_pricing_rule = "" if skip_free else price_rule_doc.name
                         item.custom_rate = price_list[0][1] if price_list else 0
                         item.rate = price_list[0][1] if price_list else 0
                         item.price_list_rate = price_list[0][1] if price_list else 0
@@ -214,6 +243,65 @@ def apply_free_item_based_on_same_item_qty(doc):
     # Step 3: Recalculate totals
     doc.calculate_taxes_and_totals()
     # Step 4: Save the document
+
+
+def check_free_item_stock(doc, item_code, warehouse, stock_qty):
+    """
+    Check that `warehouse` can supply `stock_qty` (stock UOM) of the free item on top of
+    what the other rows of this invoice already take from it.
+
+    Returns (batch_no, skip). When stock is short, a warning is shown and skip is True.
+    """
+    if not warehouse:
+        _warn_free_item_skipped(item_code, _("not set"), 0, stock_qty)
+        return None, True
+
+    # qty already consumed by rows in this invoice from the same item + warehouse
+    used_in_doc = 0.0
+    used_per_batch = defaultdict(float)
+    for row in doc.items:
+        if row.item_code != item_code or (row.warehouse or doc.set_warehouse) != warehouse:
+            continue
+        row_stock_qty = flt(row.stock_qty) or flt(row.qty) * (flt(row.conversion_factor) or 1)
+        used_in_doc += row_stock_qty
+        if row.batch_no:
+            used_per_batch[row.batch_no] += row_stock_qty
+
+    available = get_available_stock(item_code, warehouse, doc.posting_date, doc.posting_time)
+    free_available = available - used_in_doc
+    if free_available < flt(stock_qty):
+        _warn_free_item_skipped(item_code, warehouse, free_available, stock_qty)
+        return None, True
+
+    batch_no = None
+    if frappe.get_cached_value("Item", item_code, "has_batch_no"):
+        batch_no = get_batch_no(
+            item_code=item_code,
+            warehouse=warehouse,
+            qty=stock_qty,
+            company=doc.company,
+            posting_date=doc.posting_date,
+            posting_time=doc.posting_time,
+            exclude_qty_map=used_per_batch,
+        )
+        if not batch_no:
+            # stock exists but no single batch can cover the free qty
+            _warn_free_item_skipped(item_code, warehouse, free_available, stock_qty, batch=True)
+            return None, True
+
+    return batch_no, False
+
+
+def _warn_free_item_skipped(item_code, warehouse, available, required, batch=False):
+    if batch:
+        msg = _(
+            "Free item {0} was not added: no single batch in warehouse {1} has {2} available."
+        ).format(frappe.bold(item_code), frappe.bold(warehouse), flt(required))
+    else:
+        msg = _(
+            "Free item {0} was not added: insufficient stock in warehouse {1} (available {2}, required {3})."
+        ).format(frappe.bold(item_code), frappe.bold(warehouse), max(flt(available), 0), flt(required))
+    frappe.msgprint(msg, title=_("Free Item Skipped"), indicator="orange")
 
 
 def get_item_price(args, item_code, ignore_party=False):
