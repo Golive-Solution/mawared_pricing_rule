@@ -4,7 +4,6 @@ from collections import defaultdict
 from frappe.query_builder.functions import IfNull
 from mawared_pricing_rule.event.erp_utils import get_pricing_rules
 from mawared_pricing_rule.event.utils import build_json_args, set_free_item_tax_template, get_free_qty
-from erpnext.stock.doctype.batch.batch import get_batch_no
 
 
 def before_insert(doc, method=None):

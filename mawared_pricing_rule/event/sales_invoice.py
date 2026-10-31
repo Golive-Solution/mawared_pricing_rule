@@ -3,8 +3,7 @@ from frappe.utils import today , flt
 from collections import defaultdict
 from frappe.query_builder.functions import IfNull
 from mawared_pricing_rule.event.erp_utils import get_pricing_rules
-from mawared_pricing_rule.event.utils import build_json_args, set_free_item_tax_template, get_free_qty
-from erpnext.stock.doctype.batch.batch import get_batch_no
+from mawared_pricing_rule.event.utils import build_json_args, set_free_item_tax_template, get_free_qty, get_batch_no
 
 
 def before_insert(doc, method=None):
@@ -91,7 +90,14 @@ def apply_free_item_based_on_same_item_qty(doc):
             if price_rule_doc.price_or_product_discount == "Product":  # Change threshold as needed
                 free_item_code = price_rule_doc.free_item if not price_rule_doc.same_item else value["item_code"]
                 free_qty = get_free_qty(price_rule_doc, value["qty"])
-                batch_no = get_batch_no(item_code = free_item_code, qty = free_qty, warehouse = doc.set_warehouse)
+                batch_no = get_batch_no(
+                    item_code=free_item_code,
+                    warehouse=doc.set_warehouse,
+                    qty=free_qty,
+                    company=doc.company,
+                    posting_date=doc.posting_date,
+                    posting_time=doc.posting_time,
+                )
                 free_item = {
                     "item_code": free_item_code, 
                     "qty": free_qty,
@@ -117,6 +123,7 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "base_rate": 0,
                     "base_amount": 0,
                     "batch_no": batch_no,
+                    "use_serial_batch_fields": 1 if batch_no else 0,
                     "warehouse": doc.set_warehouse,
                 }
                 

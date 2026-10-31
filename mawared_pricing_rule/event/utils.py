@@ -141,3 +141,44 @@ def get_free_qty(pricing_rule, transaction_qty):
             if pricing_rule.get("round_free_qty"):
                 qty = (recursive_qty // recurse_for) * free_qty
     return qty
+
+
+def get_batch_no(item_code, warehouse, qty, company=None, posting_date=None, posting_time=None):
+    """
+    Return a batch for `item_code` in `warehouse` that has at least `qty` available.
+
+    ERPNext v15 changed `erpnext.stock.doctype.batch.batch.get_batch_no` to take a
+    Serial and Batch Bundle id, so the old (item_code, warehouse, qty) call no longer
+    works. This uses `get_auto_batch_nos`, which respects the Stock Settings
+    FIFO / LIFO / Expiry choice and excludes reserved / POS-consumed qty.
+    """
+    if not item_code or not warehouse:
+        return None
+    if not frappe.get_cached_value("Item", item_code, "has_batch_no"):
+        return None
+
+    from erpnext.stock.doctype.serial_and_batch_bundle.serial_and_batch_bundle import (
+        get_auto_batch_nos,
+    )
+
+    batches = get_auto_batch_nos(
+        frappe._dict(
+            {
+                "item_code": item_code,
+                "warehouse": warehouse,
+                "company": company,
+                "posting_date": posting_date,
+                "posting_time": posting_time,
+                "based_on": frappe.db.get_single_value(
+                    "Stock Settings", "pick_serial_and_batch_based_on"
+                ),
+            }
+        )
+    )
+
+    qty = flt(qty)
+    for batch in batches:
+        if flt(batch.get("qty")) >= qty:
+            return batch.get("batch_no")
+
+    return None
