@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import flt
+from frappe.utils import flt, getdate, get_datetime
 from erpnext.stock.get_item_details import get_item_tax_template, get_item_tax_map
 
 def build_json_args(doc, item=None):
@@ -143,31 +143,27 @@ def get_free_qty(pricing_rule, transaction_qty):
     return qty
 
 
-def get_batch_no(
-    item_code, warehouse, qty, company=None, posting_date=None, posting_time=None, exclude_qty_map=None
-):
+def get_available_batches(item_code, warehouse, company=None, posting_date=None, posting_time=None):
     """
-    Return a batch for `item_code` in `warehouse` that has at least `qty` available.
+    Available batches of `item_code` in `warehouse` as [frappe._dict(batch_no, qty)]
+    (qty in stock UOM), in the order ERPNext itself auto-picks them (Stock Settings
+    "Pick Serial / Batch Based On": FIFO / LIFO by batch creation, or Expiry).
 
-    `qty` must be in stock UOM. `exclude_qty_map` ({batch_no: stock_qty}) is qty already
-    taken from a batch by other rows of the same unsaved document; it is subtracted
-    from that batch's availability.
-
-    ERPNext v15 changed `erpnext.stock.doctype.batch.batch.get_batch_no` to take a
-    Serial and Batch Bundle id, so the old (item_code, warehouse, qty) call no longer
-    works. This uses `get_auto_batch_nos`, which respects the Stock Settings
-    FIFO / LIFO / Expiry choice and excludes reserved / POS-consumed qty.
+    Uses `get_auto_batch_nos`, which drops expired, reserved and POS-held qty. ERPNext v15
+    changed `erpnext.stock.doctype.batch.batch.get_batch_no` to take a Serial and Batch
+    Bundle id, which is why that function isn't used.
     """
     if not item_code or not warehouse:
-        return None
+        return []
     if not frappe.get_cached_value("Item", item_code, "has_batch_no"):
-        return None
+        return []
 
     from erpnext.stock.doctype.serial_and_batch_bundle.serial_and_batch_bundle import (
         get_auto_batch_nos,
     )
 
-    batches = get_auto_batch_nos(
+    qty_by_batch = {}
+    for row in get_auto_batch_nos(
         frappe._dict(
             {
                 "item_code": item_code,
@@ -180,16 +176,72 @@ def get_batch_no(
                 ),
             }
         )
-    )
+    ):
+        if row.get("warehouse") and row.get("warehouse") != warehouse:
+            continue
+        if flt(row.get("qty")) > 0:
+            batch_no = row.get("batch_no")
+            qty_by_batch[batch_no] = qty_by_batch.get(batch_no, 0.0) + flt(row.get("qty"))
 
-    qty = flt(qty)
-    exclude_qty_map = exclude_qty_map or {}
+    return [frappe._dict({"batch_no": b, "qty": q}) for b, q in qty_by_batch.items()]
+
+
+def get_batches_by_manufacturing_date(
+    item_code, warehouse, company=None, posting_date=None, posting_time=None
+):
+    """
+    Same as `get_available_batches`, but oldest `Batch.manufacturing_date` first. A batch
+    with no manufacturing date uses its creation date instead. (ERPNext can only order by
+    batch creation or expiry, so the list is re-sorted here.)
+    """
+    batches = get_available_batches(item_code, warehouse, company, posting_date, posting_time)
+    if not batches:
+        return []
+
+    sort_keys = {
+        b.name: (getdate(b.manufacturing_date or b.creation), get_datetime(b.creation), b.name)
+        for b in frappe.get_all(
+            "Batch",
+            filters={"name": ["in", [b.batch_no for b in batches]]},
+            fields=["name", "manufacturing_date", "creation"],
+        )
+    }
+    last = (getdate("9999-12-31"), get_datetime("9999-12-31"))
+    return sorted(batches, key=lambda b: sort_keys.get(b.batch_no) or (*last, b.batch_no))
+
+
+def allocate_batches(batches, qty, used_qty_map=None, unit=None):
+    """
+    Take `qty` (stock UOM) from `batches` in their given order, spilling into the next
+    batch when one runs out.
+
+    `used_qty_map` ({batch_no: stock_qty}) is qty already taken from a batch by other rows
+    of the same unsaved document; it is subtracted from that batch's availability.
+
+    `unit` is the stock qty of one transaction-UOM unit (the row's conversion factor).
+    When given, each batch only gives whole multiples of it, so every resulting row has a
+    whole qty in its UOM (a batch holding 9 pcs gives nothing towards a box of 12).
+
+    Returns (allocation, remaining): allocation is [(batch_no, stock_qty)], remaining is
+    the stock qty the batches couldn't cover (0 when fully covered).
+    """
+    remaining = flt(qty)
+    unit = flt(unit)
+    used_qty_map = used_qty_map or {}
+    allocation = []
     for batch in batches:
-        available = flt(batch.get("qty")) - flt(exclude_qty_map.get(batch.get("batch_no")))
-        if available >= qty:
-            return batch.get("batch_no")
+        if flt(remaining, 6) <= 0:
+            break
+        available = flt(batch.qty) - flt(used_qty_map.get(batch.batch_no))
+        take = min(available, remaining)
+        if unit > 0:
+            take = int(flt(take / unit, 6)) * unit
+        if flt(take, 6) <= 0:
+            continue
+        allocation.append((batch.batch_no, take))
+        remaining -= take
 
-    return None
+    return allocation, max(flt(remaining, 6), 0.0)
 
 
 def get_available_stock(item_code, warehouse, posting_date=None, posting_time=None):
