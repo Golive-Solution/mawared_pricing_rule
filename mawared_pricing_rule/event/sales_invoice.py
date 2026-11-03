@@ -12,24 +12,50 @@ from mawared_pricing_rule.event.utils import (
     get_batches_by_manufacturing_date,
     allocate_batches,
     get_available_stock,
+    uses_serial_and_batch_bundle,
 )
 
 
 def before_insert(doc, method=None):
+    if not doc.get("custom_is_sfa"):
+        return
     doc.ignore_pricing_rule = 1
 
 def before_validate(doc, method=None):
+    if not doc.get("custom_is_sfa"):
+        return
     # Seed custom_rate on both create and update. before_insert only fires on
     # create, so without this the update path enters validate with an empty
     # custom_rate and the pricing logic falls back to price_list[0] (IndexError).
     for item in doc.items:
         item.custom_rate = item.rate
+
+    # ERPNext v14 runs set_batch_nos(throw=True) in the controller's validate, before the
+    # validate hook, and throws when no single batch covers a row. Split the paid rows by
+    # batch first so it only checks rows that fit.
+    if (
+        should_apply_pricing(doc)
+        and doc.update_stock
+        and not doc.is_return
+        and not uses_serial_and_batch_bundle()
+    ):
+        for item in doc.items:
+            item.stock_qty = flt(item.qty) * (flt(item.conversion_factor) or 1)
+        assign_paid_item_batches(doc)
+
+def should_apply_pricing(doc):
+    # Skip if any item is linked to a Sales Order
+    return (
+        doc.get("custom_is_sfa")
+        and not doc.custom_ignore_pricing_rule
+        and not any(getattr(item, "sales_order", None) for item in doc.items)
+        and not getattr(doc, "custom_sales_order", None)
+    )
+
 def validate(doc , method = None):
-    if not doc.custom_ignore_pricing_rule:
-        # Skip if any item is linked to a Sales Order
-        if not any(getattr(item, "sales_order", None) for item in doc.items) and not getattr(doc, "custom_sales_order", None):
-            apply_free_item_based_on_same_item_qty(doc)
-            calculate_total(doc)
+    if should_apply_pricing(doc):
+        apply_free_item_based_on_same_item_qty(doc)
+        calculate_total(doc)
         
 
 def calculate_total(doc):
@@ -69,9 +95,9 @@ def apply_free_item_based_on_same_item_qty(doc):
                 "description": item.description,
                 "custom_applied_pricing_rule": item.custom_applied_pricing_rule,
                 "warehouse": item.warehouse or doc.set_warehouse,
-                "custom_vat_rate": item.custom_vat_rate,
-                "custom_tax_category_code": item.custom_tax_category_code,
-                "custom_support_ksa_e_invoice_integration_phase_ii": item.custom_support_ksa_e_invoice_integration_phase_ii,
+                # "custom_vat_rate": item.custom_vat_rate,
+                # "custom_tax_category_code": item.custom_tax_category_code,
+                # "custom_support_ksa_e_invoice_integration_phase_ii": item.custom_support_ksa_e_invoice_integration_phase_ii,
             }
     non_free_items = [item for item in doc.items if not item.is_free_item]
     doc.items = []
@@ -156,11 +182,11 @@ def apply_free_item_based_on_same_item_qty(doc):
                     "base_rate": 0,
                     "base_amount": 0,
                     "warehouse": free_warehouse,
-                    "custom_is_prepayment":0,
-                    "custom_is_down_payment":0,
-                    "custom_vat_rate": value["custom_vat_rate"],
-                    "custom_tax_category_code": value["custom_tax_category_code"],
-                    "custom_support_ksa_e_invoice_integration_phase_ii": value["custom_support_ksa_e_invoice_integration_phase_ii"],
+                    # "custom_is_prepayment":0,
+                    # "custom_is_down_payment":0,
+                    # "custom_vat_rate": value["custom_vat_rate"],
+                    # "custom_tax_category_code": value["custom_tax_category_code"],
+                    # "custom_support_ksa_e_invoice_integration_phase_ii": value["custom_support_ksa_e_invoice_integration_phase_ii"],
                 }
                 
                 if not skip_free:
@@ -284,7 +310,7 @@ def get_batch_usage(doc, item_code, warehouse, include_unbatched=True):
             continue
         if row.batch_no:
             used[row.batch_no] += get_row_stock_qty(row)
-        elif row.serial_and_batch_bundle:
+        elif row.get("serial_and_batch_bundle"):
             # batches picked by the user through the Serial and Batch Bundle dialog
             for entry in frappe.get_all(
                 "Serial and Batch Entry",
@@ -337,10 +363,23 @@ def allocate_row_batches(doc, item_code, warehouse, stock_qty, conversion_factor
             return []
         for batch_no, part_qty in picked:
             taken[batch_no] += part_qty
-        allocation.append((None, remaining))
+        if uses_serial_and_batch_bundle():
+            allocation.append((None, remaining))
+        else:
+            # v14 rows hold a single batch_no and ERPNext won't split one, so each batch
+            # gets its own row (the remainder may then be a fraction of the UOM)
+            allocation = merge_allocation(allocation + picked)
 
     used.update(taken)
     return allocation
+
+
+def merge_allocation(allocation):
+    """Combine parts of the same batch into one, keeping the first-seen order."""
+    merged = {}
+    for batch_no, qty in allocation:
+        merged[batch_no] = merged.get(batch_no, 0.0) + flt(qty)
+    return list(merged.items())
 
 
 def is_plannable_batch_item(item_code):
@@ -384,7 +423,7 @@ def merge_paid_batch_rows(doc):
         warehouse = row.warehouse or doc.set_warehouse
         if (
             row.is_free_item
-            or row.serial_and_batch_bundle
+            or row.get("serial_and_batch_bundle")
             or not warehouse
             or not is_plannable_batch_item(row.item_code)
         ):
@@ -430,7 +469,7 @@ def assign_paid_item_batches(doc):
         return (
             not row.is_free_item
             and not row.batch_no
-            and not row.serial_and_batch_bundle
+            and not row.get("serial_and_batch_bundle")
             and (row.warehouse or doc.set_warehouse)
             and is_plannable_batch_item(row.item_code)
         )

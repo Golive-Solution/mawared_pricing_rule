@@ -143,6 +143,12 @@ def get_free_qty(pricing_rule, transaction_qty):
     return qty
 
 
+def uses_serial_and_batch_bundle():
+    """True on ERPNext v15+, where batches are picked through Serial and Batch Bundles.
+    On v14 each row carries a single `batch_no`."""
+    return frappe.get_meta("Sales Invoice Item").has_field("serial_and_batch_bundle")
+
+
 def get_available_batches(item_code, warehouse, company=None, posting_date=None, posting_time=None):
     """
     Available batches of `item_code` in `warehouse` as [frappe._dict(batch_no, qty)]
@@ -157,6 +163,17 @@ def get_available_batches(item_code, warehouse, company=None, posting_date=None,
         return []
     if not frappe.get_cached_value("Item", item_code, "has_batch_no"):
         return []
+
+    if not uses_serial_and_batch_bundle():
+        # v14: the same batches, in the same order (expiry, then creation), that
+        # set_batch_nos picks from
+        from erpnext.stock.doctype.batch.batch import get_batches
+
+        return [
+            frappe._dict({"batch_no": b.batch_id, "qty": flt(b.qty)})
+            for b in get_batches(item_code, warehouse)
+            if flt(b.qty) > 0
+        ]
 
     from erpnext.stock.doctype.serial_and_batch_bundle.serial_and_batch_bundle import (
         get_auto_batch_nos,

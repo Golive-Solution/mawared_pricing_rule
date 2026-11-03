@@ -1,10 +1,17 @@
 frappe.ui.form.on('Sales Invoice', {
     onload: function(frm) {
+        if (!frm.doc.custom_is_sfa) return;
         frm.doc.ignore_pricing_rule = 1
         // hide the ignore pricing rule checkbox
         frm.toggle_display('ignore_pricing_rule', false)
     },
+    custom_is_sfa: function(frm) {
+        // the app's pricing only runs on SFA documents; others use ERPNext's own pricing rules
+        frm.set_value('ignore_pricing_rule', frm.doc.custom_is_sfa ? 1 : 0);
+        frm.toggle_display('ignore_pricing_rule', !frm.doc.custom_is_sfa);
+    },
     custom_ignore_pricing_rule: function(frm) {
+        if (!frm.doc.custom_is_sfa) return;
         if (frm.doc.custom_ignore_pricing_rule) {
             custom_ignore_logic(frm);
         }else{
@@ -121,6 +128,7 @@ function custom_ignore_logic(frm) {
 
 frappe.ui.form.on('Sales Invoice Item', {
     rate: function (frm, cdt, cdn) {
+        if (!frm.doc.custom_is_sfa) return;
         let item = locals[cdt][cdn];
         // Assume user changed rate manually
         item.custom_rate = item.rate;

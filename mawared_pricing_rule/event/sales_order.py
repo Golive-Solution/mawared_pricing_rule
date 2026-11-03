@@ -7,11 +7,13 @@ from mawared_pricing_rule.event.utils import build_json_args, set_free_item_tax_
 
 
 def before_insert(doc, method=None):
+    if not doc.get("custom_is_sfa"):
+        return
     doc.ignore_pricing_rule = 1
     for item in doc.items:
         item.custom_rate = item.rate
 def validate(doc , method = None):
-    if not doc.custom_ignore_pricing_rule:
+    if doc.get("custom_is_sfa") and not doc.custom_ignore_pricing_rule:
         apply_free_item_based_on_same_item_qty(doc)
         calculate_total(doc)
         
