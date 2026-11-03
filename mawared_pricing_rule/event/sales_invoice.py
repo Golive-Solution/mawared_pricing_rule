@@ -30,7 +30,7 @@ def before_validate(doc, method=None):
     for item in doc.items:
         item.custom_rate = item.rate
 
-    # ERPNext v14 runs set_batch_nos(throw=True) in the controller's validate, before the
+    ### ERPNext v14 runs set_batch_nos(throw=True) in the controller's validate, before the
     # validate hook, and throws when no single batch covers a row. Split the paid rows by
     # batch first so it only checks rows that fit.
     if (
