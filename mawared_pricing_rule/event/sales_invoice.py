@@ -39,10 +39,25 @@ def should_apply_pricing(doc):
     )
 
 def validate(doc , method = None):
-    if should_apply_pricing(doc):
+    if doc.get("custom_is_sfa") and doc.is_return and not doc.return_against:
+        # No original invoice, so there is nothing free to take back
+        remove_free_items(doc)
+
+    # A return against an invoice records what came back, at the rates it was sold at
+    if should_apply_pricing(doc) and not (doc.is_return and doc.return_against):
         apply_free_item_based_on_same_item_qty(doc)
         calculate_total(doc)
-        
+
+
+def remove_free_items(doc):
+    paid_items = [item for item in doc.items if not item.is_free_item]
+    if len(paid_items) == len(doc.items):
+        return
+    doc.items = paid_items
+    for idx, item in enumerate(doc.items, start=1):
+        item.idx = idx
+    doc.calculate_taxes_and_totals()
+
 
 def calculate_total(doc):
     total_qty = 0
@@ -114,7 +129,8 @@ def apply_free_item_based_on_same_item_qty(doc):
             customer=doc.customer,
         )
         price_list = get_item_price(dect, value["item_code"], ignore_party=True)
-        price_rule = get_pricing_rules(build_json_args(doc, value),doc)
+        # Returns never earn a rule: a cumulative rule could otherwise match and add free qty
+        price_rule = None if doc.is_return else get_pricing_rules(build_json_args(doc, value),doc)
         if price_rule:
             price_rule_doc = frappe.get_doc("Pricing Rule", price_rule[0].name)
             if price_rule_doc.price_or_product_discount == "Product":  # Change threshold as needed

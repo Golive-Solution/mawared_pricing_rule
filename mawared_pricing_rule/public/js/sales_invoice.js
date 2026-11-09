@@ -12,6 +12,8 @@ frappe.ui.form.on('Sales Invoice', {
     },
     custom_ignore_pricing_rule: function(frm) {
         if (!frm.doc.custom_is_sfa) return;
+        // a return against an invoice keeps its free rows and original rates
+        if (frm.doc.is_return && frm.doc.return_against) return;
         if (frm.doc.custom_ignore_pricing_rule) {
             custom_ignore_logic(frm);
         }else{
